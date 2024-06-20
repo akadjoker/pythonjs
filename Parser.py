@@ -1,131 +1,26 @@
 
 from Token import TokenType, Token
 from enum import Enum, auto
+from Visitor import Visitor
+from Printer import ASTPrinter
+from Ast import *
 
-
-# program         -> statement* EOF ;
-# statement       -> varDecl | exprStmt | block ;
-# varDecl         -> "var" IDENTIFIER "=" expression ";" ;
-# exprStmt        -> expression ";" ;
-# block           -> "begin" statement* "end" ;
-# expression      -> term ( ( "+" | "-" ) term )* ;
-# term            -> factor ( ( "*" | "/" | "%" ) factor )* ;
-# factor          -> primary ( "^" factor )? ;
-# primary         -> FLOAT | INTEGER | STRING | IDENTIFIER | "(" expression ")" ;
-
-
-class Expr:
-    pass
-
-    def accept(self, visitor):
-        pass
-
-class Binary(Expr):
-    def __init__(self, left, operator, right):
-        self.left = left
-        self.operator = operator
-        self.right = right
-
-    
-
-    def __repr__(self):
-        return f'({self.left}, {self.operator}, {self.right})'
-    
-    def accept(self, visitor):
-        return visitor.visit_binary_expr(self)
-
-class Unary(Expr):
-    def __init__(self, operator, right):
-        self.operator = operator
-        self.right = right
-    
-
-    
-    def accept(self, visitor):
-        return visitor.visit_unary_expr(self)
-
-
-class Grouping(Expr):
-    def __init__(self, expression):
-        self.expression = expression
-
-    
-    def accept(self, visitor):
-        return visitor.visit_grouping_expr(self)
-
-class Literal(Expr):
-    def __init__(self, value):
-        self.value = value
-
-    
-    def __repr__(self):
-        return str(self.value)
-
-    def accept(self, visitor):
-        return visitor.visit_literal_expr(self)
-
-
-class VarDecl(Expr):
-    def __init__(self, name, initializer):
-        self.name = name
-        self.initializer = initializer
-        
-    
-    
-    def accept(self, visitor):
-        return visitor.visit_var_decl_expr(self)
-
-class Print(Expr):
-    def __init__(self, expression):
-        self.expression = expression
-    
-
-    
-    def accept(self, visitor):
-        return visitor.visit_print_expr(self)
-
-class Block(Expr):
-    def __init__(self, declarations):
-        self.declarations = declarations
-    
-
-    
-    def accept(self, visitor):
-        return visitor.visit_block_expr(self)
-
-
-class Variable(Expr):
-    def __init__(self, name):
-        self.name = name
-    def accept(self, visitor):
-        return visitor.visit_variable_expr(self)
-
-# Name 	       Operators 	    Associates
-# Equality   	== !=       	Left
-# Comparison 	> >= < <=   	Left
-# Term 	        - + 	        Left
-# Factor 	    / * 	        Left
-# Unary 	    ! - 	        Right
-
-class Ast:
+class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.current = 0
 
-
-
-
     def match(self, *types):
-        for token_type in types:
-            if self.check(token_type):
+        for type in types:
+            if self.check(type):
                 self.advance()
                 return True
         return False
 
-    def check(self, token_type):
+    def check(self, type):
         if self.is_at_end():
             return False
-        return self.peek().type == token_type
+        return self.peek().type == type
 
     def advance(self):
         if not self.is_at_end():
@@ -134,79 +29,61 @@ class Ast:
 
     def is_at_end(self):
         return self.peek().type == TokenType.EOF
-
+    
     def peek(self):
         return self.tokens[self.current]
 
     def previous(self):
         return self.tokens[self.current - 1]
-
-    def consume(self, token_type, message):
-        if self.check(token_type):
+    
+    def consume(self, type, message):   
+        if self.check(type):
             return self.advance()
-        raise Exception(message)
+        self.error(self.peek(),message)
 
+    def synchronize(self):
+        self.advance()
+        while not self.is_at_end():
+            if self.previous().type == TokenType.SEMICOLON:
+                return
+            if self.peek().type in [TokenType.FOR, TokenType.IF, TokenType.WHILE, TokenType.RETURN]:
+                return
+            self.advance()
+    
+    def error(self, token, message):
+        if token.type == TokenType.EOF:
+            print(f"[line {token.line}] Error at end: {message}")
+        else:
+            print(f"[line {token.line}] Error at '{token.lexeme}': {message}")
+        exit(1)
+    
     def parse(self):
-        try:
-            statements = []
-            while not self.is_at_end():
-                statements.append(self.declaration())
-            return statements
-        except Exception as e:
-            print("Error parsing input: " + str(e))
-            return None
+        return self.program()
 
-    def declaration(self):
-        if self.match(TokenType.VAR):
-            return self.var_declaration()
-        else:
-            return self.statement()
-
-    def statement(self):
-        if self.match(TokenType.BEGIN):
-            return self.block()
-        elif self.match(TokenType.PRINT):
-            return self.print_statement()
-        else:
-            return self.expression_statement()
-    
-
-    
-    def expression_statement(self):
-        expr = self.expression()
-        self.consume(TokenType.SEMICOLON, "Expect ';' after expression.")
-        return expr
 
     def expression(self):
-        expr = self.term()
-        while self.match(TokenType.PLUS, TokenType.MINUS):
-            operator = self.previous()
-            right = self.term()
-            expr = Binary(expr, operator, right)
-        return expr
+        return self.assignment()
     
-    def term(self):
-        expr = self.factor()
-        while self.match(TokenType.STAR, TokenType.SLASH, TokenType.PERCENT):
+    def assignment(self):
+            expr = self.equality()
+
+            if self.match(TokenType.EQUAL):
+                equals = self.previous()
+                value = self.assignment()
+                if isinstance(expr, Variable):
+                    name = expr.name
+                    return Assign(name, value)
+                self.error(equals, "Invalid assignment target.")
+
+            return expr    
+
+    def equality(self):
+        expr = self.comparison()
+        while self.match(TokenType.BANG_EQUAL, TokenType.EQUAL_EQUAL):
             operator = self.previous()
-            right = self.factor()
+            right = self.comparison()
             expr = Binary(expr, operator, right)
         return expr
-
-    def factor(self):
-        expr = self.unary()
-        while self.match(TokenType.CARET):
-            operator = self.previous()
-            right = self.unary()
-            expr = Binary(expr, operator, right)
-        return expr
-
-    def unary(self):
-        if self.match(TokenType.MINUS, TokenType.BANG):
-            operator = self.previous()
-            right = self.unary()
-            return Unary(operator, right)
-        return self.primary()
 
     def comparison(self):
         expr = self.term()
@@ -216,151 +93,133 @@ class Ast:
             expr = Binary(expr, operator, right)
         return expr
 
+    def term(self):
+        expr = self.factor()
+        while self.match(TokenType.MINUS, TokenType.PLUS):
+            operator = self.previous()
+            right = self.factor()
+            expr = Binary(expr, operator, right)
+        return expr
+    
+    def factor(self):
+        expr = self.unary()
+        while self.match(TokenType.SLASH, TokenType.STAR):
+            operator = self.previous()
+            right = self.unary()
+            expr = Binary(expr, operator, right)
+        return expr
+    
+    def unary(self):
+        if self.match(TokenType.MINUS, TokenType.BANG):
+            operator = self.previous()
+            right = self.unary()
+            return Unary(operator, right)
+        return self.primary()
+    
+    def primary(self):
+        if self.match(TokenType.FALSE):
+            return Literal(False)
+        
+        if self.match(TokenType.TRUE):
+            return Literal(True)
+        
+        if self.match(TokenType.NIL):
+            return Literal(None)
+        
+        if self.match(TokenType.INTEGER):
+            return Literal(self.previous().literal)
+        
+        if self.match(TokenType.FLOAT):
+            return Literal(self.previous().literal)
+        
+        if self.match(TokenType.STRING):
+            return Literal(self.previous().literal)
+
+        if self.match(TokenType.IDENTIFIER):
+            return Variable(self.previous())
+        
+        
+        if self.match(TokenType.LPAREN):
+            expr = self.expression()
+            self.consume(TokenType.RPAREN, "Expect ')' after expression.")
+            return Grouping(expr)
+        return None
+    
+    def block(self):
+        statements = []
+        while not self.check(TokenType.RBRACE) and not self.is_at_end():
+            statements.append(self.declaration())
+        self.consume(TokenType.RBRACE, "Expect '}' after block.")
+        return statements
+
+    def declaration(self):
+        if self.match(TokenType.IDINT, TokenType.IDFLOAT, TokenType.IDSTRING):
+            return self.var_declaration()
+        return self.statement()
+
+    def statement(self):
+        if self.match(TokenType.PRINT):
+            return self.print_statement()
+
+        if self.match(TokenType.EVAL):
+            return self.eval_statement()
+        
+        if self.match(TokenType.LBRACE):
+            return BlockStmt(self.block())
+        return self.expression_statement()
+    
     def print_statement(self):
         self.consume(TokenType.LPAREN, "Expect '(' after 'print'.")
         value = self.expression()
-        self.consume(TokenType.RPAREN, "Expect ')' after expression.")
+        self.consume(TokenType.RPAREN, "Expect ')' after value.")
         self.consume(TokenType.SEMICOLON, "Expect ';' after value.")
-        return Print(value)
+        return PrintStmt(value)
     
+    def eval_statement(self):
+        self.consume(TokenType.LPAREN, "Expect '(' after 'eval'.")
+        value = self.expression()
+        self.consume(TokenType.RPAREN, "Expect ')' after value.")
+        self.consume(TokenType.SEMICOLON, "Expect ';' after value.")
+        return EvalStmt(value)  
+
+    def expression_statement(self):
+        expr = self.expression()
+        self.consume(TokenType.SEMICOLON, "Expect ';' after expression.")
+        return ExpressionStmt(expr)
+
+    def program(self):
+            self.consume(TokenType.PROGRAM, "Expect 'program' at the beginning.")
+            name = self.consume(TokenType.IDENTIFIER, "Expect program name.")
+            self.consume(TokenType.SEMICOLON, "Expect ';' after program name.")
+            self.consume(TokenType.LBRACE, "Expect '{' to start program body.")
+            body = self.block()
+            return Program(name, body)
+
     def var_declaration(self):
+        type = self.previous()
         name = self.consume(TokenType.IDENTIFIER, "Expect variable name.")
         initializer = None
         if self.match(TokenType.EQUAL):
             initializer = self.expression()
         self.consume(TokenType.SEMICOLON, "Expect ';' after variable declaration.")
-        print("ADD GLOBAL VARIAVEL", name.lexeme)
-        return VarDecl(name, initializer)
+        return VarDecl(type, name, initializer)
     
-    def primary(self):
-        if self.match(TokenType.INTEGER):
-            return Literal(self.previous().literal)
-        elif self.match(TokenType.FLOAT): 
-            return Literal(self.previous().literal)
-        elif self.match(TokenType.STRING):
-            return Literal(self.previous().literal)
-        elif self.match(TokenType.FALSE):
-            return Literal(0)
-        elif self.match(TokenType.TRUE):
-            return Literal(1)
-        elif self.match(TokenType.NIL):
-            return Literal(0)
-        elif self.match(TokenType.IDENTIFIER):
-             return Variable(self.previous())
-        elif self.match(TokenType.LPAREN):
-            expr = self.expression()
-            self.consume(TokenType.RPAREN, "Expect ')' after expression.")
-            return Grouping(expr)
 
-        raise Exception("Primary Expect expression.",self.peek())
 
-class Interpreter:
-    def __init__(self):
-        self.variables = {}
-        self.varsNames =[]
+if __name__ == "__main__":
+    tokens = [
+        Token(TokenType.PROGRAM, "program", None, 1),
+        Token(TokenType.IDENTIFIER, "main", None, 1),
+        Token(TokenType.SEMICOLON, ";", None, 1),
+        Token(TokenType.LBRACE, "{", None, 2),
+        Token(TokenType.IDINT, "int", None, 3),
+        Token(TokenType.IDENTIFIER, "a", None, 3),
+        Token(TokenType.SEMICOLON, ";", None, 3),
+        Token(TokenType.RBRACE, "}", None, 4),
+        Token(TokenType.EOF, "", None, 5)
+    ]
 
-    
-    def print_variables(self):
-        print("Variables:", self.variables)
-
-    def addGlobal(self, name, value):
-        self.variables[name] = value
-        self.varsNames.append(name)
-        return len(self.varsNames) - 1
-
-    def getGlobal(self, name):
-        return self.variables[name]
-    
-    def variablesIndex(self, name):
-        for i in range(len(self.varsNames)):
-            if self.varsNames[i] == name:
-                return i
-        return -1
-
-    def interpret(self, statements):
-        try:
-            for statement in statements:
-                self.execute(statement)
-        except Exception as e:
-            print("Error interpreting input: " + str(e))
-            return None
-    
-    def execute(self, statement):
-        print("Accept :",statement)
-        statement.accept(self)
-
-    def evaluate(self, exp):
-        return exp.accept(self)
-
-    def visit(self, exp):
-        if exp is None:
-            return None
-        return self.evaluate(exp)
-    
-    def visit_binary_expr(self, expr):
-        left = self.evaluate(expr.left)
-        right = self.evaluate(expr.right)
-        
-        if expr.operator.type == TokenType.PLUS:
-            return left + right
-        elif expr.operator.type == TokenType.MINUS:
-            return left - right
-        elif expr.operator.type == TokenType.STAR:
-            return left * right
-        elif expr.operator.type == TokenType.SLASH:
-            return left / right
-        elif expr.operator.type == TokenType.GREATER:
-            return left > right
-        elif expr.operator.type == TokenType.GREATER_EQUAL:
-            return left >= right
-        elif expr.operator.type == TokenType.LESS:
-            return left < right
-        elif expr.operator.type == TokenType.LESS_EQUAL:
-            return left <= right
-        elif expr.operator.type == TokenType.EQUAL_EQUAL:
-            return left == right
-        elif expr.operator.type == TokenType.BANG_EQUAL:
-            return left != right
-        elif expr.operator.type == TokenType.PERCENT:
-            return left % right
-        elif expr.operator.type == TokenType.CARET:
-            return left ** right
-        else :
-            raise Exception("Unknown binary operator: " + str(expr.operator.type))
-        
-
-    def visit_literal_expr(self, expr):
-        return expr.value   
-    
-    def visit_unary_expr(self, expr):
-        right = self.interpret(expr.right)
-        if expr.operator.type == TokenType.MINUS:
-            return -right
-        elif expr.operator.type == TokenType.BANG:
-            return not right
-    
-    def visit_grouping_expr(self, expr):
-        return self.evaluate(expr.expression)
-    
-    def visitExpressionStmt(self, stmt):
-        self.evaluate(stmt.expression)
-        
-    
-    def visit_var_decl_expr(self, expr):
-        value = self.visit(expr.initializer)
-        name  = expr.name.lexeme
-        self.addGlobal(name, value)
-
-    def visit_assign_expr(self, expr):
-        pass
-
-    def visit_variable_expr(self, expr):
-        print("GET VAR")
-        pass
-
-    def visit_print_expr(self, expr):
-        val = self.visit(expr.expression)
-        print("PRINT: ",val)
-        return val
-        
-    
+    parser = Parser(tokens)
+    program = parser.parse()
+    printer = ASTPrinter()
+    print(printer.print(program))

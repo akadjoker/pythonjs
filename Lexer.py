@@ -106,6 +106,8 @@ class Lexer:
             self.add_token(TokenType.CONTINUE)
         elif char == 'a' and self.match('nd'):
             self.add_token(TokenType.AND)
+        elif char == 'e' and self.match('val'):
+            self.add_token(TokenType.EVAL)
         elif char == 'o' and self.match('r'):
             self.add_token(TokenType.OR)
         elif char == 'g' and self.match('oto'):
@@ -146,6 +148,8 @@ class Lexer:
             self.add_token(TokenType.MOD)
         elif char == 'p' and self.match('ow'):
             self.add_token(TokenType.POW)  
+        elif char == 'p' and self.match('rogram'):
+            self.add_token(TokenType.PROGRAM)
         elif char == 'i' and self.match('nt'):
             self.add_token(TokenType.IDINT)
         elif char == 'b' and self.match('ool'):

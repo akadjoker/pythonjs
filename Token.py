@@ -14,6 +14,7 @@ class TokenType(Enum):
     BOOL = auto()
 
     IDENTIFIER = auto()
+    PROGRAM = auto()
     
 
 
@@ -69,8 +70,10 @@ class TokenType(Enum):
     DO = auto() 
     RETURN = auto()
     COMMA = auto()
+    FOR = auto()
     
     PRINT = auto()
+    EVAL = auto()
     FUNCTION = auto()
     PROCESS = auto()
     STRUCT = auto()
