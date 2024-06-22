@@ -47,7 +47,7 @@ class Parser:
         while not self.is_at_end():
             if self.previous().type == TokenType.SEMICOLON:
                 return
-            if self.peek().type in [TokenType.FUNCTION,TokenType.PROCEDURE,TokenType.STRUCT,TokenType.PROCESS]:
+            if self.peek().type in [TokenType.FUNCTION,TokenType.PROCEDURE,TokenType.STRUCT]:
                 return
             self.advance()
     
@@ -219,6 +219,9 @@ class Parser:
 
         if self.match(TokenType.SWITCH):
             return self.switch_statement()
+
+        if self.match(TokenType.PROCESS):
+            return self.process_declaration()
         
         if self.match(TokenType.LBRACE):
             return BlockStmt(self.block())
@@ -415,4 +418,39 @@ class Parser:
 
         self.consume(TokenType.RBRACE, "Expect '}' after switch cases.")
         return SwitchStmt(expression, cases, default_case)
-                                      
+
+
+    #Process
+    def parameter(self):
+        if self.match(TokenType.IDINT, TokenType.IDFLOAT):
+            return self.var_declaration()
+        else:
+            print("Error in parameter")
+            exit(1)
+        #type = self.consume(TokenType.IDINT, TokenType.IDFLOAT, "Expect parameter type.")
+        #name = self.consume(TokenType.IDENTIFIER, "Expect parameter name.")
+        #return Parameter(type, name)                                      
+
+    
+    def process_declaration(self):
+        #self.consume(TokenType.PROCESS, "Expect 'process' keyword.")
+        name = self.consume(TokenType.IDENTIFIER, "Expect process name.")
+        
+        self.consume(TokenType.LPAREN, "Expect '(' after process name.")
+        
+        parameters = []
+        if not self.check(TokenType.RPAREN):
+            parameters.append(self.parameter())
+            while self.match(TokenType.COMMA):
+                parameters.append(self.parameter())
+        
+        self.consume(TokenType.RPAREN, "Expect ')' after parameters.")
+        self.consume(TokenType.LBRACE, "Expect '{' before process body.")
+        
+        body = []
+        while not self.check(TokenType.RBRACE) and not self.is_at_end():
+            body.append(self.statement())
+        
+        self.consume(TokenType.RBRACE, "Expect '}' after process body.")
+        
+        return ProcessStmt(name.lexeme, parameters, body)
