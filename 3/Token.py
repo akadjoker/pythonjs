@@ -64,6 +64,7 @@ class TokenType(Enum):
     CONTINUE = auto()
     GOTO = auto()
     SWITCH = auto()
+    DEFAULT = auto()
     CASE = auto()
     ELSE = auto()
     IF = auto()
@@ -72,6 +73,7 @@ class TokenType(Enum):
     DO = auto() 
     RETURN = auto()
     FOR = auto()
+    LOOP = auto()
     
     PRINT = auto()
     EVAL = auto()
