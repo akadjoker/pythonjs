@@ -44,12 +44,12 @@ class Parser:
 
     def synchronize(self):
         self.advance()
-        while not self.is_at_end():
-            if self.previous().type == TokenType.SEMICOLON:
-                return
-            if self.peek().type in [TokenType.FUNCTION,TokenType.PROCEDURE,TokenType.STRUCT]:
-                return
-            self.advance()
+        # while not self.is_at_end():
+        #     if self.previous().type == TokenType.SEMICOLON:
+        #         return
+        #     if self.peek().type in [TokenType.FUNCTION,TokenType.PROCEDURE,TokenType.STRUCT]:
+        #         return
+        #     self.advance()
     
     def error(self, token, message):
         if token.type == TokenType.EOF:
@@ -59,7 +59,15 @@ class Parser:
         exit(1)
     
     def parse(self):
-        return self.program()
+        statements = []
+        statements.append(self.program())
+        while not self.is_at_end():
+            statements.append(self.declaration())
+        
+
+        #while not self.is_at_end():
+        #    statements.append(self.program())
+        return statements
 
 
     def expression(self):
@@ -222,6 +230,14 @@ class Parser:
 
         if self.match(TokenType.PROCESS):
             return self.process_declaration()
+
+        if self.match(TokenType.START):
+            return self.start_process_statement()
+        
+        if self.match(TokenType.FRAME):
+            return self.frame_statement()
+        
+
         
         if self.match(TokenType.LBRACE):
             return BlockStmt(self.block())
@@ -255,6 +271,7 @@ class Parser:
             self.consume(TokenType.LBRACE, "Expect '{' to start program body.")
             body = self.block()
             return Program(name, body)
+
 
     def var_declaration(self):
         type = self.previous()
@@ -314,8 +331,7 @@ class Parser:
         while not self.check(TokenType.RBRACE) and not self.is_at_end():
             body.append(self.statement())
         self.consume(TokenType.RBRACE, "Expect '}' after loop body.")
-        condition = Literal(1) 
-        node = WhileStmt(condition, BlockStmt(body))  
+        node = LoopStmt(BlockStmt(body))  
         return node
 
 
@@ -422,14 +438,20 @@ class Parser:
 
     #Process
     def parameter(self):
-        if self.match(TokenType.IDINT, TokenType.IDFLOAT):
-            return self.var_declaration()
+        type = None
+        if self.match(TokenType.IDINT):
+            type = TokenType.IDINT
+        elif self.match(TokenType.IDFLOAT):
+            type = TokenType.IDFLOAT
+        elif self.match(TokenType.IDSTRING):
+            type = TokenType.IDSTRING
+        elif self.match(TokenType.IDBOOL):
+            type = TokenType.IDBOOL
         else:
             print("Error in parameter")
             exit(1)
-        #type = self.consume(TokenType.IDINT, TokenType.IDFLOAT, "Expect parameter type.")
-        #name = self.consume(TokenType.IDENTIFIER, "Expect parameter name.")
-        #return Parameter(type, name)                                      
+        name = self.consume(TokenType.IDENTIFIER, "Expect parameter name.")
+        return Parameter(type, name)                                      
 
     
     def process_declaration(self):
@@ -454,3 +476,34 @@ class Parser:
         self.consume(TokenType.RBRACE, "Expect '}' after process body.")
         
         return ProcessStmt(name.lexeme, parameters, body)
+    
+    def start_process_statement(self):
+        #self.consume(TokenType.START, "Expect 'start' keyword.")
+        process_name = self.consume(TokenType.IDENTIFIER, "Expect process name.")
+        
+        self.consume(TokenType.LPAREN, "Expect '(' after process name.")
+        
+        arguments = []
+        if not self.check(TokenType.RPAREN):
+             arguments.append(self.expression())
+             while self.match(TokenType.COMMA):
+                arguments.append(self.expression())
+        
+        self.consume(TokenType.RPAREN, "Expect ')' after arguments.")
+        self.consume(TokenType.SEMICOLON, "Expect ';' after process start.")
+
+        print(str(arguments))
+        
+        return StartProcessStmt(process_name, arguments)
+
+    def frame_statement(self):
+        value = None
+        if self.match(TokenType.LPAREN): 
+            value = self.expression()
+            self.consume(TokenType.RPAREN, "Expect ')' after frame argument.")
+        else:
+            value = Literal(100)  
+        if isinstance(value, Literal) and value.value > 100:
+            value = Literal(100)  
+        self.consume(TokenType.SEMICOLON, "Expect ';' after 'frame'.")
+        return FrameStmt(value)

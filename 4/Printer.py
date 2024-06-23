@@ -2,8 +2,9 @@ from Visitor import Visitor
 import time
 
 class ASTPrinter(Visitor):
-    def print(self, stmt):
-        return stmt.accept(self)
+    def print(self, stmts):
+        for statement in stmts:
+            print(statement.accept(self))
 
     def visit_binary_expr(self, expr):
         return f"({self._parenthesize(expr.left)} {expr.operator.lexeme} {self._parenthesize(expr.right)})"
@@ -80,12 +81,15 @@ class ASTPrinter(Visitor):
 
     def visit_program_stmt(self, stmt):
         body = " ".join(self._parenthesize(statement) for statement in stmt.body)
-        return f"program {stmt.name.lexeme}\n {body}"
-    
+        return f"program ({stmt.name.lexeme})\n {body}"
+    def visit_loop_stmt(self, loop_stmt):
+        return f"loop \n "
     def visit_process_stmt(self, process_stmt):
         return f"process {process_stmt.name}\n "
     def visit_frame_stmt(self, frame_stmt):
         return f"frame \n "
+    def visit_start_process_stmt(self, start_process_stmt):
+        return f"start process \n "
     def _parenthesize(self, expr):
         if expr is None:
             return ""

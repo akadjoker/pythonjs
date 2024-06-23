@@ -1,4 +1,4 @@
-
+import time
 from Lexer import Lexer
 from Token import TokenType, Token
 from Parser import Parser
@@ -6,6 +6,7 @@ from Visitor import Visitor
 from Ast import  *
 import threading
 import time
+import asyncio
 
 
 class Environment:
@@ -46,7 +47,6 @@ class ProcessInstance:
         self.count_steps =len(process_stmt.body)
         self.ID = ID
         self.done = False
-        self.loop_state = None
         self.add_variable("name", self.name)
         self.add_variable("ID", self.ID)
         self.add_variable("x", 0.0)
@@ -69,7 +69,7 @@ class ProcessInstance:
         self.current_statement = 0
         interpreter.execute_block(self.process_stmt.body, self.variables)
 
-    def step(self, interpreter):
+    async def step(self, interpreter):
         if self.done:
             return False
         if self.count_steps==0:
@@ -78,53 +78,29 @@ class ProcessInstance:
         
         if self.current_statement < self.count_steps:
             statement = self.process_stmt.body[self.current_statement]
-            if self.loop_state is None:
-                if isinstance(statement, LoopStmt):
-                    self.loop_state = statement
-            if self.loop_state :    
-                loop = statement
-                if loop.is_break:
-                    self.done = True
-                    return False
-                self.current_statement -= 1 
-            interpreter.execute_process_statement(statement, self.variables)
-            self.current_statement += 1  
-            return True          
-
+            state = interpreter.execute_process_statement(statement, self.variables)
+            self.current_statement += 1            
+            if state:
+                print("Frame")
+                return True  # Indica que a execução deve pausar para a próxima iteração
+        #print(self.count_steps," ", self.current_statement)
         if self.current_statement >= self.count_steps: 
             self.done = True
         return False
-    
-    def last(self,interpreter):
-         interpreter.execute_process_statement(self.process_stmt.body[-1], self.variables)
-
 
 
 def main_run(vm):
     done = False
-    for statement in vm.statements:
-        vm.execute(statement)
-    vm.execute_block(vm.program.body, vm.environment)
-    # while vm.active_processes:
-    #     next_active_processes = []
-    #     for process_instance in vm.active_processes:
-    #         if process_instance.done:
-    #             vm.active_processes.remove(process_instance)
-    #             continue
-    #         if process_instance.step(vm):
-    #             next_active_processes.append(process_instance)
-    #     vm.active_processes = next_active_processes
-        
-        #time.sleep(0.1)
-    
-    while vm.active_processes: 
+    while not done: 
+        if len(vm.active_processes) == 0:
+            break
+        #print(len(vm.active_processes)," ", vm.active_processes[0].name)
         for process_instance in vm.active_processes:
             if process_instance.done:
                 vm.active_processes.remove(process_instance)
-                process_instance.last(vm)
                 continue
             if process_instance.step(vm):
-                continue
+                break
  
     print("All processes finished.")
 class Interpreter(Visitor):
@@ -143,9 +119,9 @@ class Interpreter(Visitor):
 
 
 
-    def interpret(self, program):
+    async def interpret(self, program):
         for statement in program.body:
-            self.execute(statement)
+            await self.execute(statement)
         # while self.active_processes:
         #     next_processes = []
         #     for process_instance in self.active_processes:
@@ -153,28 +129,21 @@ class Interpreter(Visitor):
         #             next_processes.append(process_instance)
         #     self.active_processes = next_processes
 
-    def run(self, stmts):
+    async def run(self, stmts):
         count = len(stmts)
-        #self.execute_block(stmts, self.environment)
+        await self.execute_block(stmts, self.environment)
         for i in range(1,count):
-            self.execute(stmts[i])
-        self.program = stmts[0]
-        #self.statements.append(program)
-
-        #self.execute_block(program.body, self.environment)
+            await self.execute(stmts[i])
+        program = stmts[0]
+        await self.execute_block(program.body, self.environment)
         #for statement in program.body:
-        #    self.statements.append(statement)
-        for i in range(1,count):
-            self.statements.append(stmts[i])
-        
-        
-
-        thread = threading.Thread(target=main_run, args=(self,))
-        thread.start()
-        thread.join()
+        #    self.execute(statement)
+        #thread = threading.Thread(target=main_run, args=(self,))
+        #thread.start()
+        #thread.join()
       
 
-    def debug(self):
+    async def debug(self):
         print("-------------------------------------------")
         print(" Process: ")
         for process in self.active_processes:
@@ -189,36 +158,36 @@ class Interpreter(Visitor):
             print("     ",var)
         print("-------------------------------------------")
         
-    def evaluate(self, expr):
+    async def evaluate(self, expr):
         try:
-            return expr.accept(self)
+            return await expr.accept(self)
         except  Exception as X:
             print("Evaluate expression Error: "+str(X)+" : "+str(expr))
 
-    def execute(self, stmt):
+    async def execute(self, stmt):
         try:
-            return stmt.accept(self)
+            return await stmt.accept(self)
         except Exception as e:
             print(f"Execute Error: {e} in node {type(stmt).__name__}")
         
 
-    def visit_expression_stmt(self, stmt):
-        return self.evaluate(stmt.expression)
+    async def visit_expression_stmt(self, stmt):
+        return await self.evaluate(stmt.expression)
 
-    def visit_print_stmt(self, stmt):
-        value = self.evaluate(stmt.expression)
+    async def visit_print_stmt(self, stmt):
+        value = await self.evaluate(stmt.expression)
         print(value)
 
-    def visit_eval_stmt(self, stmt):
-        value = str(self.evaluate(stmt.expression))
+    async def visit_eval_stmt(self, stmt):
+        value = str(await self.evaluate(stmt.expression))
         python_expression = value.replace('^', '**')
         print(eval(python_expression))
         return value
 
-    def visit_block_stmt(self, stmt):
+    async def visit_block_stmt(self, stmt):
         return self.execute_block(stmt.statements, Environment(self.environment))
 
-    def visit_var_decl_stmt(self, stmt):
+    async def visit_var_decl_stmt(self, stmt):
         value = None
         if stmt.initializer:
             value = self.evaluate(stmt.initializer)
@@ -226,12 +195,12 @@ class Interpreter(Visitor):
 
     
 
-    def visit_assign_expr(self, expr):
+    async def visit_assign_expr(self, expr):
         value = self.evaluate(expr.value)
         self.environment.assign(expr.name.lexeme, value)
         return value
 
-    def visit_if_stmt(self, stmt):
+    async def visit_if_stmt(self, stmt):
         if self.evaluate(stmt.condition):
             self.execute(stmt.then_branch)
         else:
@@ -242,28 +211,28 @@ class Interpreter(Visitor):
             if stmt.else_branch:
                 self.execute(stmt.else_branch)
     
-    def visit_elif_stmt(self, expr):
+    async def visit_elif_stmt(self, expr):
         pass
 
-    def visit_return_stmt(self, return_stmt):
+    async def visit_return_stmt(self, return_stmt):
         value = None
         if return_stmt.value is not None:
             value = self.evaluate(return_stmt.value)
         return value
         
-    def visit_break_stmt(self, break_stmt):
+    async def visit_break_stmt(self, break_stmt):
         if (self.last_loop is not None):
             self.last_loop.is_break = True
 
 
-    def visit_continue_stmt(self, continue_stmt):
+    async def visit_continue_stmt(self, continue_stmt):
         if (self.last_loop is not None):
             self.last_loop.is_continue = True
 
     
 
     
-    def visit_do_while_stmt(self, do_while_stmt):
+    async def visit_do_while_stmt(self, do_while_stmt):
         self.depth += 1
         self.last_loop  = do_while_stmt
         self.last_loop.is_break    = False
@@ -278,7 +247,7 @@ class Interpreter(Visitor):
         self.last_loop = None
         self.depth -= 1
     
-    def visit_while_stmt(self, while_stmt):# while && for 
+    async def visit_while_stmt(self, while_stmt):# while && for 
         self.depth += 1
         self.last_loop  = while_stmt
         self.last_loop.is_break    = False
@@ -286,24 +255,17 @@ class Interpreter(Visitor):
         self.depth      = self.depth 
         while True:
             self.last_loop  = while_stmt    
-            result = self.evaluate(while_stmt.condition)
+            result =await self.evaluate(while_stmt.condition)
             if not result or while_stmt.is_break:
                 break
-            self.execute(while_stmt.body)
+            await self.execute(while_stmt.body)
         self.last_loop = None
         self.depth -= 1
 
-    def visit_loop_stmt(self, loop_stmt):
-        self.last_loop  = loop_stmt
-        self.last_loop.is_break    = False
-        self.last_loop.is_continue = False
-        self.execute(loop_stmt.body)
-        self.last_loop = None
-   
 
       
 
-    def visit_logical_expr(self, expr):
+    async def visit_logical_expr(self, expr):
         left = self.evaluate(expr.left)
         if expr.operator.type == TokenType.OR:
             if left:
@@ -313,7 +275,7 @@ class Interpreter(Visitor):
                 return left
         return self.evaluate(expr.right)
 
-    def visit_binary_expr(self, expr):
+    async def visit_binary_expr(self, expr):
         left = self.evaluate(expr.left)
         right = self.evaluate(expr.right)
 
@@ -357,51 +319,51 @@ class Interpreter(Visitor):
         elif expr.operator.type == TokenType.BANG_EQUAL:
             return left != right
 
-    def visit_unary_expr(self, expr):
+    async def visit_unary_expr(self, expr):
         right = self.evaluate(expr.right)
         if expr.operator.type == TokenType.MINUS:
             return -right
         elif expr.operator.type == TokenType.BANG:
             return not right
 
-    def visit_literal_expr(self, expr):
+    async def visit_literal_expr(self, expr):
         return expr.value
 
-    def visit_grouping_expr(self, expr):
+    async def visit_grouping_expr(self, expr):
         return self.evaluate(expr.expression)
 
-    def visit_variable_expr(self, expr):
+    async def visit_variable_expr(self, expr):
         return self.environment.get(expr.name.lexeme)
 
-    def visit_switch_stmt(self, switch_stmt):
-        switch_value = self.evaluate(switch_stmt.expression)
+    async def visit_switch_stmt(self, switch_stmt):
+        switch_value = await self.evaluate(switch_stmt.expression)
         for case in switch_stmt.cases:
             if self.evaluate(case.value) == switch_value:
                 for stmt in case.body:
-                    self.execute(stmt)
+                    await self.execute(stmt)
                 return  # Exit after the first matching case
         if switch_stmt.default_case:
             for stmt in switch_stmt.default_case:
-                self.execute(stmt)
+                await self.execute(stmt)
 
-    def visit_case_stmt(self, case_stmt):
+    async def visit_case_stmt(self, case_stmt):
         #  não é necessário,  lidamos com `case_stmt` no `visit_switch_stmt`
         pass
 
 
-    def visit_process_stmt(self, process_stmt):
+    async def visit_process_stmt(self, process_stmt):
         self.processes[process_stmt.name] = process_stmt
         pass
 
-    def visit_frame_stmt(self, frame_stmt):
+    async def visit_frame_stmt(self, frame_stmt):
         pass  # 'frame' 
 
-    def visit_start_process_stmt(self, start_process_stmt):
+    async def visit_start_process_stmt(self, start_process_stmt):
         process_name = start_process_stmt.process_name.lexeme
-        args = [self.evaluate(arg) for arg in start_process_stmt.arguments]
-        self.start_process(process_name, args)
+        args = [await self.evaluate(arg) for arg in start_process_stmt.arguments]
+        await self.start_process(process_name, args)
 
-    def start_process(self, name, args):
+    async def start_process(self, name, args):
         print("Start process "+str(name) + " " + str(args))
         process_stmt = self.processes.get(name)
         if not process_stmt:
@@ -438,7 +400,7 @@ class Interpreter(Visitor):
 
         #self.execute_block(process_stmt.body, process_instance.variables)
 
-    def execute_process_statement(self, statement, environment):
+    async def execute_process_statement(self, statement, environment):
         previous = self.environment
         try:
             self.environment = environment
@@ -453,17 +415,24 @@ class Interpreter(Visitor):
                 return False
 
             if process:    
-                self.execute(statement)
+                await self.execute(statement)
 
             if self.last_loop and self.last_loop.is_break:
-                return True
-            return False        
+                return
+            if isinstance(statement, FrameStmt):
+                        frame_value = self.evaluate(statement.value)
+                        sleep_time = (100 - frame_value) / 100.0
+                        if frame_value < 100:
+                            #print("Frame:",sleep_time)
+                            time.sleep(sleep_time)
+                        return True
+
         except Exception as e:
             print(f"Block Error: {e}")
         finally:
             self.environment = previous
 
-    def execute_block(self, statements, environment):
+    async def execute_block(self, statements, environment):
         previous = self.environment
         try:
             self.environment = environment
@@ -485,13 +454,13 @@ class Interpreter(Visitor):
                                 time.sleep(sleep_time)
                             return True
                 if process:    
-                    self.execute(statement)
+                   await self.execute(statement)
 
                 if self.last_loop and self.last_loop.is_break:
                     break
 
                                 
-            return False        
+
         except Exception as e:
             print(f"Block Error: {e}")
         finally:

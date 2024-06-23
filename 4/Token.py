@@ -78,10 +78,15 @@ class TokenType(Enum):
     PRINT = auto()
     EVAL = auto()
     NOW = auto()
+    IMPORT = auto()
 
     FUNCTION = auto()
     PROCEDURE = auto()
+    
     PROCESS = auto()
+    START = auto()
+    FRAME = auto()
+
     STRUCT = auto()
     
 

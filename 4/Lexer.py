@@ -191,6 +191,12 @@ class Lexer:
             self.add_token(TokenType.PROGRAM)
         elif text == 'process':
             self.add_token(TokenType.PROCESS)
+        elif text == 'import':
+            self.add_token(TokenType.IMPORT)
+        elif text == 'frame':
+            self.add_token(TokenType.FRAME)
+        elif text == 'start':
+            self.add_token(TokenType.START)
         elif text == 'func':
             self.add_token(TokenType.FUNCTION)
         elif text == 'proc':
@@ -205,6 +211,16 @@ class Lexer:
             self.add_token(TokenType.DEFAULT)
         elif text == 'loop':
             self.add_token(TokenType.LOOP)
+        elif text == 'and':
+            self.add_token(TokenType.AND)
+        elif text == 'or':
+            self.add_token(TokenType.OR)
+        elif text == 'not':
+            self.add_token(TokenType.BANG)
+        elif text == 'xor':
+            self.add_token(TokenType.XOR)
+        elif text == 'mod':
+            self.add_token(TokenType.MOD)
         else:
             self.add_token(TokenType.IDENTIFIER, text)
 

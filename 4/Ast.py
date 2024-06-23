@@ -121,6 +121,7 @@ class WhileStmt(Node):
         self.is_break=False
         self.is_continue = False
         self.depth = 0
+        self.first_time = True
 
     def accept(self, visitor):
         visitor.last_loop =  self
@@ -137,7 +138,16 @@ class DoWhileStmt(Node):
     def accept(self, visitor):
         return visitor.visit_do_while_stmt(self)
     
+class LoopStmt(Node):
+    def __init__(self, body):
+        self.body = body
+        self.is_break    = False
+        self.is_continue = False
+        self.depth = 0
+        
 
+    def accept(self, visitor):
+        return visitor.visit_loop_stmt(self)
 
 class SwitchStmt(Node):
     def __init__(self, expression, cases, default_case=None):
@@ -217,11 +227,7 @@ class ProcessStmt(Node):
         self.name = name
         self.parameters = parameters
         self.body = body
-        self.variables = {}
-        self.variables["x"] = Literal(0.0)
-        self.variables["y"] = Literal(0.0)
-        self.variables["id"] = Literal(0)
-        self.variables["graph"] = Literal(0)
+
 
 
 
@@ -237,8 +243,17 @@ class Parameter(Node):
         return visitor.visit_parameter(self)
 
 class FrameStmt(Node):
-    def __init__(self):
-        pass
+    def __init__(self, value):
+        self.value = value
 
     def accept(self, visitor):
         return visitor.visit_frame_stmt(self)
+    
+
+class StartProcessStmt(Node):
+    def __init__(self, process_name, arguments):
+        self.process_name = process_name
+        self.arguments = arguments
+
+    def accept(self, visitor):
+        return visitor.visit_start_process_stmt(self)    
